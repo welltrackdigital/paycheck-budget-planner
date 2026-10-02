@@ -952,10 +952,31 @@ const round2 = n => Math.round((Number(n)||0)*100)/100;
 const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? round2(n) : 0; };
 
 function seed(){
-  const today = new Date();
-  /* md(monthsBack, day): a date in an earlier month; entries in this month never go past today */
-  const md = (back, day) => { const d = new Date(today.getFullYear(), today.getMonth()-back, 1); const last = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); d.setDate(back===0 ? Math.min(day, today.getDate()) : Math.min(day, last)); return localISO(d); };
-  return {
+  const today = new Date(), Y = today.getFullYear(), CM = today.getMonth();
+  const mk = m => Y+"-"+String(m+1).padStart(2,"0");
+  const past = [...Array(CM).keys()].map(mk);                 /* months before this one: bills already paid */
+  const tx = [];
+  const add = (m, day, desc, category, type, amount) => {
+    const last = new Date(Y, m+1, 0).getDate();
+    tx.push({id:uid(), date:localISO(new Date(Y, m, Math.min(day, last))), desc, category, type, amount:round2(amount)});
+  };
+  const EXTRA = [["Winter coat","Shopping",89.99],["Valentine dinner","Food & Drink",72.50],["Pharmacy","Health",23.50],["Concert tickets","Fun",95],
+    ["Phone plan","Subscriptions",45],["Car service","Transport",160],["Beach day","Fun",58],["School supplies","Shopping",64.30],
+    ["Dentist","Health",120],["Pumpkin patch","Fun",32],["Thanksgiving groceries","Groceries",138.60],["Holiday gifts","Shopping",210]];
+  const V = [0, 6.2, -4.1, 9.8, -7.5, 3.3, 12.4, -2.8, 5.6, -9.1, 14.2, 7.7];
+  for(let m=0; m<12; m++){                                    /* sample entries in every month of the year */
+    const v = V[m];
+    add(m, 1,  "Paycheck", "Income", "income", 2400);
+    add(m, 1,  "Rent", "Housing", "expense", 1100);
+    add(m, 4,  "Grocery run", "Groceries", "expense", 86.40 + v);
+    add(m, 5,  "Electricity bill", "Utilities", "expense", 132 + v*1.5);
+    add(m, 9,  "Fuel", "Transport", "expense", 48 + v/2);
+    add(m, 12, EXTRA[m][0], EXTRA[m][1], "expense", EXTRA[m][2]);
+    add(m, 15, "Paycheck", "Income", "income", 2400);
+    add(m, 18, "Grocery run", "Groceries", "expense", 112.75 - v);
+    add(m, 22, "Dinner out", "Food & Drink", "expense", 54.20 + v);
+  }
+  const s = {
     currency:"$", profile:{ name:"" }, settings:{ theme:"plum" },
     paycheck:{ amount:2400, cycle:"biweekly", pctBills:50, pctSave:20 },
     envelopes:[
@@ -965,31 +986,34 @@ function seed(){
       {id:uid(), name:"Emergency", icon:"shield", goal:1000, saved:450}
     ],
     bills:[
-      {id:uid(), name:"Rent", icon:"home", amount:1100, dueDay:1, paidMonths:[]},
-      {id:uid(), name:"Utilities", icon:"bolt", amount:140, dueDay:5, paidMonths:[monthKey(today)]},
-      {id:uid(), name:"Internet", icon:"wifi", amount:60, dueDay:10, paidMonths:[]},
-      {id:uid(), name:"Streaming", icon:"film", amount:15.99, dueDay:15, paidMonths:[]}
+      {id:uid(), name:"Rent", icon:"home", amount:1100, dueDay:1, paidMonths:[...past]},
+      {id:uid(), name:"Utilities", icon:"bolt", amount:140, dueDay:5, paidMonths:[...past, mk(CM)]},
+      {id:uid(), name:"Internet", icon:"wifi", amount:60, dueDay:10, paidMonths:[...past]},
+      {id:uid(), name:"Streaming", icon:"film", amount:15.99, dueDay:15, paidMonths:[...past]}
     ],
     goals:[
       {id:uid(), name:"Emergency Fund", icon:"shield", target:5000, saved:1250},
       {id:uid(), name:"Dream Vacation", icon:"plane", target:3000, saved:640}
     ],
-    transactions:[
-      {id:uid(), date:md(0,1),  desc:"Paycheck", category:"Income", type:"income", amount:2400},
-      {id:uid(), date:md(0,3),  desc:"Grocery run", category:"Groceries", type:"expense", amount:86.40},
-      {id:uid(), date:md(0,5),  desc:"Electricity bill", category:"Utilities", type:"expense", amount:132},
-      {id:uid(), date:md(0,9),  desc:"Fuel", category:"Transport", type:"expense", amount:48},
-      {id:uid(), date:md(1,1),  desc:"Paycheck", category:"Income", type:"income", amount:2400},
-      {id:uid(), date:md(1,1),  desc:"Rent", category:"Housing", type:"expense", amount:1100},
-      {id:uid(), date:md(1,12), desc:"Dinner out", category:"Food & Drink", type:"expense", amount:54.20},
-      {id:uid(), date:md(1,15), desc:"Paycheck", category:"Income", type:"income", amount:2400},
-      {id:uid(), date:md(1,18), desc:"Grocery run", category:"Groceries", type:"expense", amount:112.75},
-      {id:uid(), date:md(2,8),  desc:"New shoes", category:"Shopping", type:"expense", amount:79.99},
-      {id:uid(), date:md(2,20), desc:"Pharmacy", category:"Health", type:"expense", amount:23.50},
-      {id:uid(), date:md(3,14), desc:"Concert tickets", category:"Fun", type:"expense", amount:95},
-      {id:uid(), date:md(4,10), desc:"Phone plan", category:"Subscriptions", type:"expense", amount:45}
-    ]
+    transactions: tx
   };
+  s.sample = { year:Y, sig:sampleHash(s) };
+  return s;
+}
+/* Fingerprint of the sample data — if it still matches, the user hasn't touched it yet */
+function sampleHash(s){
+  const str = JSON.stringify([s.paycheck, s.envelopes, s.bills, s.goals, s.transactions]);
+  let h = 5381; for(let i=0; i<str.length; i++) h = ((h<<5) + h + str.charCodeAt(i)) | 0;
+  return String(h >>> 0);
+}
+/* Untouched sample data from an older version / older year is refreshed so every month tab has entries */
+function isStaleSample(s){
+  if(s.sample) return s.sample.sig === sampleHash(s) && s.sample.year !== new Date().getFullYear();
+  const W = new Set(["Paycheck","Monthly salary","Grocery run","Electricity bill","Fuel","Rent","Dinner out","New shoes","Pharmacy","Concert tickets","Phone plan",
+    "Utilities","Internet","Streaming","Netflix","Groceries","Transport","Fun Money","Emergency","Emergency Fund","Dream Vacation"]);
+  const g = s.goals.map(x=>x.name).sort().join("|");
+  return s.transactions.length >= 5 && s.bills.length >= 3 && s.envelopes.length >= 3 && g === "Dream Vacation|Emergency Fund" &&
+    [...s.transactions.map(t=>t.desc), ...s.bills.map(b=>b.name), ...s.envelopes.map(e=>e.name)].every(n => W.has(n));
 }
 /* Cleans any saved / imported data so a bad or old file can never crash the app */
 function normalize(s){
@@ -1013,7 +1037,8 @@ function normalize(s){
     bills: arr(s.bills).map(b=>({id:id(b.id), name:txt(b.name,"Bill",40), icon:ic(b.icon,"receipt"), amount:num(b.amount), dueDay:Math.min(28,Math.max(1,Math.round(Number(b.dueDay)||1))), paidMonths: Array.isArray(b.paidMonths) ? [...new Set(b.paidMonths.filter(k=>/^\d{4}-\d{2}$/.test(k)))] : (b.paid ? [monthKey(new Date())] : [])})),
     goals: arr(s.goals).map(g=>({id:id(g.id), name:txt(g.name,"Goal",40), icon:ic(g.icon,"target"), target:num(g.target), saved:num(g.saved)})),
     transactions: arr(s.transactions).map(t=>({id:id(t.id), date:/^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : localISO(), desc:txt(t.desc,"Entry",80),
-      category:CATS.includes(t.category) ? t.category : "Other", type:t.type==="income" ? "income" : "expense", amount:num(t.amount)}))
+      category:CATS.includes(t.category) ? t.category : "Other", type:t.type==="income" ? "income" : "expense", amount:num(t.amount)})),
+    ...(s.sample && typeof s.sample.sig==="string" ? { sample:{ year:Number(s.sample.year)||0, sig:s.sample.sig } } : {})
   };
 }
 const monthKey = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
@@ -1022,7 +1047,13 @@ const curMK = () => monthKey(calCursor);
 const monthName = (d=calCursor, long=true) => d.toLocaleString("en",{month: long ? "long" : "short", year:"numeric"});
 const isPaid = (b, mk=curMK()) => Array.isArray(b.paidMonths) && b.paidMonths.includes(mk);
 let state, hadSaved = false;
-try { const raw = localStorage.getItem(LS_KEY); hadSaved = !!raw; state = normalize(raw ? JSON.parse(raw) : null); }
+try {
+  const raw = localStorage.getItem(LS_KEY); hadSaved = !!raw; state = normalize(raw ? JSON.parse(raw) : null);
+  if(hadSaved && isStaleSample(state)){
+    state = Object.assign(seed(), { currency:state.currency, profile:state.profile, settings:state.settings });
+    hadSaved = false;
+  }
+}
 catch(e){ state = seed(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
 save();
